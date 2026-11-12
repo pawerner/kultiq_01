@@ -1,0 +1,190 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - uid: string (required, immutable, matches userId) - User's Firebase Auth UID
+//   - email: string (required, email format, < 255 chars) - User's email address
+//   - role: string (required, 'admin' | 'berater') - User role (only admin can set 'admin')
+//   - lastLoginAt: timestamp (required) - Timestamp of last login
+//   - createdAt: string (required, < 100 chars) - Creation time string
+//
+// Collection: reviews
+// Document ID: {reviewId}
+// Fields:
+//   - id: string (required, < 100 chars) - Review ID
+//   - uid: string (required, immutable, matches creator UID) - Owner UID
+//   - updatedAt: string (required, < 100 chars) - Last updated ISO string
+//   - museumInfo: map (required, keys: name, reviewer, date) - Metadata about the museum audit
+//   - ratings: map (required, size <= 100) - Category-criterion score ratings (0-5)
+//   - comments: map (required, size <= 100) - Category-criterion notes
+//   - report: map or null (optional) - Generated AI report object
+//
+// Collection: leads
+// Document ID: {leadId}
+// Fields:
+//   - email: string (required, valid email, < 255 chars) - Business email for demo report
+//   - museumName: string (required, < 255 chars) - Name of the museum/institution
+//   - overallScore: number (required, >= 0, <= 5) - Calculated demo score
+//   - createdAt: timestamp (required) - Timestamp when lead was captured
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email == 'awtrp1@gmail.com';
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function uidUnchanged() {
+      return ('uid' in request.resource.data) &&
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return ('uid' in request.resource.data) &&
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 3 &&
+        email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data, userId) {
+      return hasRequiredFields(['uid', 'email', 'role', 'lastLoginAt', 'createdAt']) &&
+        hasOnlyAllowedFields(['uid', 'email', 'role', 'lastLoginAt', 'createdAt']) &&
+        data.uid is string && data.uid == userId && data.uid.size() <= 128 &&
+        isValidEmail(data.email) &&
+        data.role in ['admin', 'berater'] &&
+        data.lastLoginAt is timestamp &&
+        data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidMuseumInfo(info) {
+      return info is map &&
+        info.keys().hasAll(['name', 'reviewer', 'date']) &&
+        info.keys().hasOnly(['name', 'reviewer', 'date']) &&
+        info.name is string && info.name.size() <= 300 &&
+        info.reviewer is string && info.reviewer.size() <= 300 &&
+        info.date is string && info.date.size() <= 50;
+    }
+
+    function isValidReview(data) {
+      return hasRequiredFields(['id', 'uid', 'updatedAt', 'museumInfo', 'ratings', 'comments', 'report']) &&
+        hasOnlyAllowedFields(['id', 'uid', 'updatedAt', 'museumInfo', 'ratings', 'comments', 'report']) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 100 &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.updatedAt is string && data.updatedAt.size() <= 100 &&
+        isValidMuseumInfo(data.museumInfo) &&
+        data.ratings is map && data.ratings.size() <= 100 &&
+        data.comments is map && data.comments.size() <= 100 &&
+        (data.report == null || (data.report is map && data.report.size() <= 20));
+    }
+
+    function isValidLead(data) {
+      return hasRequiredFields(['email', 'museumName', 'overallScore', 'createdAt']) &&
+        hasOnlyAllowedFields(['email', 'museumName', 'overallScore', 'createdAt']) &&
+        isValidEmail(data.email) &&
+        data.museumName is string && data.museumName.size() >= 1 && data.museumName.size() <= 300 &&
+        data.overallScore is number && data.overallScore >= 0 && data.overallScore <= 5 &&
+        data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Strictly limit read access of PII to the document owner or the bootstrapped admin
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Prevent privilege escalation: non-admins can only set role == 'berater'
+      allow create: if isAuthenticated() &&
+        isValidUser(request.resource.data, userId) &&
+        ((isOwner(userId) && request.resource.data.role == 'berater') || isAdmin());
+
+      allow update: if isAuthenticated() &&
+        isValidUser(request.resource.data, userId) &&
+        request.resource.data.uid == resource.data.uid &&
+        ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin());
+
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if isDocOwner() || isAdmin();
+
+      allow create: if isAuthenticated() &&
+        uidUnchanged() &&
+        isValidReview(request.resource.data);
+
+      allow update: if (isDocOwner() || isAdmin()) &&
+        uidNotModified() &&
+        isValidReview(request.resource.data);
+
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /leads/{leadId} {
+      // Only the admin can read captured demo leads (protects PII emails)
+      allow read: if isAdmin();
+
+      // Allow creating validated demo lead entries
+      allow create: if isValidLead(request.resource.data);
+
+      // Leads are immutable once submitted; only admin can delete
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

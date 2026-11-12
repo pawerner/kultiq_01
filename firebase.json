@@ -1,0 +1,20 @@
+{
+  "firestore": {
+    "database": "ai-studio-museumreviewapp0-602debcd-6a57-4782-ad86-7e65c022f159",
+    "rules": "firestore.rules",
+    "edition": "enterprise"
+  },
+  "apphosting": {
+    "backendId": "museum-review-app",
+    "rootDir": "/",
+    "ignore": [
+      "node_modules",
+      ".git",
+      ".antigravity",
+      "migrated_prompt_history",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "functions"
+    ]
+  }
+}
