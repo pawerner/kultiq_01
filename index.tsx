@@ -185,7 +185,7 @@ const Logo = () => (
     <div className="logo-text">KULTIQ</div>
 );
 
-const LandingPage = ({ onStartApp }) => {
+const LandingPage = ({ onStartApp, onLoadDemo }) => {
     return (
         <motion.div 
             initial={{ opacity: 0 }} 
@@ -226,7 +226,10 @@ const LandingPage = ({ onStartApp }) => {
                         >
                             Jetzt Audit starten <ArrowRight className="group-hover:translate-x-1 transition-transform" />
                         </button>
-                        <button className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-lg transition-all backdrop-blur-sm">
+                        <button 
+                            onClick={onLoadDemo}
+                            className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-lg transition-all backdrop-blur-sm"
+                        >
                             Demo ansehen
                         </button>
                     </motion.div>
@@ -534,6 +537,7 @@ const App = () => {
     const [expandedCats, setExpandedCats] = useState(new Set(isDemo ? DEMO_ACTIVE_CATEGORIES : [CATEGORIES[0]]));
     const [showLeadModal, setShowLeadModal] = useState(false);
     const [leadEmail, setLeadEmail] = useState('');
+    const [showIntroHint, setShowIntroHint] = useState(true);
 
     useEffect(() => {
         const storedBranding = JSON.parse(localStorage.getItem('kultiqBranding'));
@@ -658,6 +662,24 @@ const App = () => {
                 console.error("Fehler beim Löschen in Firestore:", err);
             }
         }
+    };
+
+    const handleStartNewAudit = () => {
+        const r = {}, c = {};
+        CATEGORIES.forEach(cat => Object.keys(C_DATA[cat].criteria).forEach(crit => {
+            r[`${cat}-${crit}`] = 0;
+            c[`${cat}-${crit}`] = '';
+        }));
+        setReview({
+            id: `rev_${Date.now()}`,
+            museumInfo: { name: '', reviewer: '', date: new Date().toISOString().split('T')[0] },
+            ratings: r,
+            comments: c,
+            report: null
+        });
+        setExpandedCats(new Set(isDemo ? DEMO_ACTIVE_CATEGORIES : [CATEGORIES[0]]));
+        setShowIntroHint(true);
+        setActiveTab('info');
     };
 
     const handleLoadDemo = () => {
@@ -1040,7 +1062,7 @@ const App = () => {
             <main className="content" style={activeTab === 'landing' ? { padding: 0, maxWidth: 'none', margin: 0 } : {}}>
                 <AnimatePresence mode="wait">
                     {activeTab === 'landing' && (
-                        <LandingPage key="landing" onStartApp={() => setActiveTab('info')} />
+                        <LandingPage key="landing" onStartApp={handleStartNewAudit} onLoadDemo={handleLoadDemo} />
                     )}
                     {activeTab === 'manual' && (
                         <motion.div 
@@ -1076,14 +1098,49 @@ const App = () => {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                         >
+                            {showIntroHint ? (
+                                <div className="mb-6 bg-sky-50 border border-sky-200 rounded-2xl p-5 text-slate-700 shadow-xs relative">
+                                    <button 
+                                        onClick={() => setShowIntroHint(false)} 
+                                        className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-sm font-semibold cursor-pointer"
+                                        title="Hinweis ausblenden"
+                                    >
+                                        ✕ Ausblenden
+                                    </button>
+                                    <div className="flex items-center gap-2 font-bold text-sky-900 text-base mb-2">
+                                        <Info size={18} className="text-sky-600" />
+                                        <span>Willkommen beim KULTIQ Audit – So funktioniert die Durchführung in 3 Schritten:</span>
+                                    </div>
+                                    <div className="grid md:grid-cols-3 gap-4 text-sm mt-3">
+                                        <div className="bg-white/80 p-3 rounded-xl border border-sky-100">
+                                            <strong className="text-sky-800 block mb-1">1. Stammdaten erfassen</strong>
+                                            Tragen Sie unten den Namen der Einrichtung, das Datum und den Auditor ein. Optional können Sie Farbe & Logo für den PDF-Bericht anpassen.
+                                        </div>
+                                        <div className="bg-white/80 p-3 rounded-xl border border-sky-100">
+                                            <strong className="text-sky-800 block mb-1">2. Kriterien bewerten</strong>
+                                            Klicken Sie auf <strong>„🚀 START“</strong>, um im Audit-Protokoll die Kategorien aufzuklappen und auf einer Skala von <strong>1 bis 5</strong> zu bewerten.
+                                        </div>
+                                        <div className="bg-white/80 p-3 rounded-xl border border-sky-100">
+                                            <strong className="text-sky-800 block mb-1">3. KI-Strategiebericht</strong>
+                                            Lassen Sie anschließend per Knopfdruck eine fundierte Analyse inkl. SWOT, Handlungsempfehlungen und PDF-Report erstellen.
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mb-4 flex justify-end">
+                                    <button onClick={() => setShowIntroHint(true)} className="text-xs text-sky-600 hover:underline font-semibold flex items-center gap-1 cursor-pointer">
+                                        <Info size={14} /> Kurzanleitung einblenden
+                                    </button>
+                                </div>
+                            )}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 500px', gap: '2rem', alignItems: 'start' }}>
                                 <div>
                                     <div className="card">
                                         <h2>Stammdaten & Branding</h2>
                                         <div className="input-grid-2">
-                                            <div className="input-group"><label>Objektname</label><input value={review.museumInfo.name} onChange={(e) => setReview(p => ({...p, museumInfo: {...p.museumInfo, name: e.target.value}}))} /></div>
-                                            <div className="input-group"><label>Auditdatum</label><input type="date" value={review.museumInfo.date} onChange={(e) => setReview(p => ({...p, museumInfo: {...p.museumInfo, date: e.target.value}}))} /></div>
-                                            <div className="input-group"><label>Auditor</label><input value={review.museumInfo.reviewer} onChange={(e) => setReview(p => ({...p, museumInfo: {...p.museumInfo, reviewer: e.target.value}}))} /></div>
+                                            <div className="input-group"><label>Objektname</label><input autoComplete="off" value={review.museumInfo.name} onChange={(e) => setReview(p => ({...p, museumInfo: {...p.museumInfo, name: e.target.value}}))} /></div>
+                                            <div className="input-group"><label>Auditdatum</label><input type="date" autoComplete="off" value={review.museumInfo.date} onChange={(e) => setReview(p => ({...p, museumInfo: {...p.museumInfo, date: e.target.value}}))} /></div>
+                                            <div className="input-group"><label>Auditor</label><input autoComplete="off" value={review.museumInfo.reviewer} onChange={(e) => setReview(p => ({...p, museumInfo: {...p.museumInfo, reviewer: e.target.value}}))} /></div>
                                         </div>
                                         <hr className="divider" />
                                         <h3>Bericht-Optionen</h3>
@@ -1115,6 +1172,39 @@ const App = () => {
                             exit={{ opacity: 0, x: -20 }}
                             className="audit-grid"
                         >
+                            {showIntroHint ? (
+                                <div className="bg-sky-50 border border-sky-200 rounded-2xl p-5 text-slate-700 shadow-xs relative">
+                                    <button 
+                                        onClick={() => setShowIntroHint(false)} 
+                                        className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-sm font-semibold cursor-pointer"
+                                        title="Hinweis ausblenden"
+                                    >
+                                        ✕ Ausblenden
+                                    </button>
+                                    <div className="flex items-center gap-2 font-bold text-sky-900 text-base mb-2">
+                                        <Info size={18} className="text-sky-600" />
+                                        <span>Hinweise zum Audit-Protokoll</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 mb-3">
+                                        Klicken Sie auf eine Kategorie, um die zugehörigen Prüfkriterien zu öffnen. Vergeben Sie pro Kriterium eine Bewertung und ergänzen Sie bei Bedarf Stichpunkte im Textfeld <em>„Anmerkungen...“</em> – die KI bezieht Ihre Notizen direkt in den Strategiebericht ein.
+                                        {isDemo && <span className="block mt-1 font-semibold text-sky-800">💡 Demo-Modus: Zum schnellen Testen sind 2 Kernkategorien freigeschaltet. Für alle 10 Kategorien können Sie sich unten links als Berater/Admin einloggen.</span>}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 text-xs font-semibold pt-2 border-t border-sky-200/70">
+                                        <span className="px-2.5 py-1 rounded-md bg-red-100 text-red-800">1 = Kritisch / Nicht vorhanden</span>
+                                        <span className="px-2.5 py-1 rounded-md bg-orange-100 text-orange-800">2 = Ausbaufähig</span>
+                                        <span className="px-2.5 py-1 rounded-md bg-yellow-100 text-yellow-800">3 = Solider Standard</span>
+                                        <span className="px-2.5 py-1 rounded-md bg-blue-100 text-blue-800">4 = Gut etabliert</span>
+                                        <span className="px-2.5 py-1 rounded-md bg-green-100 text-green-800">5 = Exzellent / Vorbildlich</span>
+                                        <span className="px-2.5 py-1 rounded-md bg-slate-200 text-slate-700">N/A = Nicht relevant (fließt nicht in den Score ein)</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex justify-end">
+                                    <button onClick={() => setShowIntroHint(true)} className="text-xs text-sky-600 hover:underline font-semibold flex items-center gap-1 cursor-pointer">
+                                        <Info size={14} /> Bewertungshilfe einblenden
+                                    </button>
+                                </div>
+                            )}
                             {CATEGORIES.map(cat => {
                                 const isLocked = isDemo && !DEMO_ACTIVE_CATEGORIES.includes(cat);
                                 return (
